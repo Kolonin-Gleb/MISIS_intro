@@ -55,11 +55,12 @@ let usersDb = Dictionary<int64, User>()
 // ================================== Заполнение БД данными для демонстрации
 
 // Ученики students
-let glebGrades = Dictionary<string, int list>()
-glebGrades.Add("math", [5; 4; 5; 3; 5; 5])
-glebGrades.Add("F#", [5; 5; 5; 5; 5; 4; 5])
+let glebGrades = Dictionary<string, List<int>>()
+glebGrades.Add("math", List<int> [5; 4; 5; 3; 5; 5])
+glebGrades.Add("F#", List<int> [5; 5; 5; 5; 5; 4; 5])
 
 // Пользователи добавляются с использованием своего id в телеграмме
+// Мой 2ой аккаунт
 usersDb.Add
     ( 6394408740L
     , { Email = "gleb@mail.ru"
@@ -69,9 +70,10 @@ usersDb.Add
     )
 
 // Учителя teachers
-// Учитебя добавляются с использованием своего id в телеграмме
+// Учителя добавляются с использованием своего id в телеграмме
+// Мой 1ый аккаунт
 usersDb.Add
-    ( 534799233L
+    ( 660062850
     , { Email = "marat@mail.ru"
         Role = "Teacher"
         Grades = Dictionary<string, List<int>>()
@@ -304,9 +306,7 @@ let parseForm (bot: IBot) (upd: Update) =
 // НАЧАЛО ПРОГРАММЫ
 [<EntryPoint>]
 let main (args: string array) =
-    let token = File.ReadAllText("token.txt").Trim()
     runBot
-        token // Использование телеграм токена бота считанного из файла
         [ Filter.isCommand
             [ Filter.command "start"  [ start ]
               Filter.command "help"   [ help ]
