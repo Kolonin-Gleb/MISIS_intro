@@ -3,9 +3,7 @@ open System.Collections.Generic
 open Telegram.Bot
 open Telegram.Bot.Types
 open Telegram.Bot.Types.Enums
-open Telegram.Bot.Types.ReplyMarkups
 open Telefunc.Core
-open Telefunc.State
 open Forms
 open Telefunc.Infrastructure
 open Telegram.Bot.Exceptions
@@ -20,6 +18,8 @@ type IBot = ITelegramBotClient
 exception ApiRequestException_fs of ApiRequestException
 
 let await task = task |> Async.AwaitTask |> Async.RunSynchronously
+
+let inline strJoin (sep: string) (vals: IEnumerable<_>) = String.Join(sep, vals)
 
 let handlePollingErrorAsync _ ex _ =
     task {
@@ -61,6 +61,7 @@ glebGrades.Add("F#", List<int> [5; 5; 5; 5; 5; 4; 5])
 
 // Пользователи добавляются с использованием своего id в телеграмме
 // Мой 2ой аккаунт
+// Здесь в id нужна L Т.к. большое число
 usersDb.Add
     ( 6394408740L
     , { Email = "gleb@mail.ru"
@@ -92,7 +93,11 @@ let start (bot: IBot) (upd: Update) =
         return bot.SendTextMessageAsync(id, "Привет, Путник!") |> await
     } |> Option.isSome
 
-let help (bot: IBot) (upd: Update) = true
+let help (bot: IBot) (upd: Update) =
+    maybe {
+        let! id = getId upd
+        return bot.SendTextMessageAsync(id, "Команды:\n...")
+    } |> Option.isSome
 
 let getGrades (bot: IBot) (upd: Update) =
     maybe {
@@ -114,7 +119,7 @@ let getGrades (bot: IBot) (upd: Update) =
             ) |> await
     } |> Option.isSome
 
-let parseEmail (bot: IBot) (upd: Update) =
+let parseEmail (_: IBot) (upd: Update) =
     maybe {
         let! id = getId upd
         let! msg = if upd.Type = UpdateType.Message then Some upd.Message else None
@@ -141,11 +146,11 @@ let authForm =
                 )
             , parser = parseEmail
             , hasAnswer = (fun _ -> fun id -> getUser id |> Option.isSome)
-            , elseCase = Skipping
+            , elseCase = Answering (fun (bot, id) -> bot.SendTextMessageAsync(id, "Вы уже зарегестрированы"))
             )
     ]
 
-let parseCreatingGroup (_: IBot) (upd: Update) =
+let parseCreatingGroup (bot: IBot) (upd: Update) =
     maybe {
         let! id = getId upd
         let! user = getUser id
@@ -153,6 +158,7 @@ let parseCreatingGroup (_: IBot) (upd: Update) =
         do
             if user.Role = "Teacher"
             then groupsDb.Add { Name = msg.Text; Users = [] }
+            else bot.SendTextMessageAsync(id, "Хорошая попытка, студент :)") |> send
         return ()
     } |> Option.isSome
 
@@ -172,7 +178,7 @@ let creatingGroupForm =
             )
     ]
 
-let parseAddToGroup (_: IBot) (upd: Update) =
+let parseAddToGroup (bot: IBot) (upd: Update) =
     maybe {
         let! id = getId upd
         let! user = getUser id
@@ -188,9 +194,11 @@ let parseAddToGroup (_: IBot) (upd: Update) =
                         maybe {
                             let! group = groupsDb |> Seq.tryFind(fun x -> x.Name = groupName)
                             let! userToAdd = usersDb |> Seq.tryFind (fun x -> x.Value.Email = email)
-                            do  group.Users <- group.Users @ [ userToAdd.Value ]
+                            do group.Users <- group.Users @ [ userToAdd.Value ]
                             return ()
                         } |> ignore
+            else
+                bot.SendTextMessageAsync(id, "Хорошая попытка, студент :)") |> send
         return ()
     } |> Option.isSome
 
@@ -210,7 +218,7 @@ let addingToGroupForm =
             )
     ]
 
-let parseAddGrade (_: IBot) (upd: Update) =
+let parseAddGrade (bot: IBot) (upd: Update) =
     maybe {
         let! id = getId upd
         let! user = getUser id
@@ -223,19 +231,27 @@ let parseAddGrade (_: IBot) (upd: Update) =
                     then
                         let groupAndEmail = line.Split ' '
                         let (email, subject, grade) = (groupAndEmail[0], groupAndEmail[1], groupAndEmail[2])
-                        maybe {
-                            let! userToGrade = usersDb |> Seq.tryFind (fun x -> x.Value.Email = email)
+                        let userToGrade = usersDb |> Seq.tryFind (fun x -> x.Value.Email = email)
+                        match userToGrade with
+                        | Some userToGrade ->
                             let success, grade = Int32.TryParse grade
-                            do
-                                if success then
-                                    if userToGrade.Value.Grades.ContainsKey subject
-                                    then userToGrade.Value.Grades[subject].Add grade
-                                    else
-                                        let grades = List()
-                                        grades.Add grade
-                                        userToGrade.Value.Grades.Add(subject, grades)
-                            return ()
-                        } |> ignore
+                            if success then
+                                if userToGrade.Value.Grades.ContainsKey subject
+                                then
+                                    userToGrade.Value.Grades[subject].Add grade
+                                else
+                                    let grades = List()
+                                    grades.Add grade
+                                    userToGrade.Value.Grades.Add(subject, grades)
+                            else
+                                bot.SendTextMessageAsync(id, "Оценка должна быть числом")
+                                |> send
+                        | None -> bot.SendTextMessageAsync(id, "Пользователь не найден") |> send
+                    else
+                        bot.SendTextMessageAsync(id, "Неверно введена оценка, введите в формате: почта предмет оценка")
+                        |> send
+            else
+                bot.SendTextMessageAsync(id, "Хорошая попытка, студент :)") |> send
         return ()
     } |> Option.isSome
 
@@ -279,6 +295,22 @@ let addingGrade (bot: IBot) (upd: Update) =
         return addingGradeForm.Send bot id
     } |> Option.isSome
 
+let getGroups (bot: IBot) (upd: Update) =
+    maybe {
+        let! id = getId upd
+        let groups =
+            groupsDb
+            |> Seq.map
+                (fun g ->
+                    $"{g.Name}:\n"
+                    + ( g.Users
+                        |> Seq.map _.Email
+                        |> strJoin ", "
+                    ))
+            |> strJoin "\n\n"
+        return bot.SendTextMessageAsync(id, if groups = "" then "Пока что нет никаких групп" else groups)
+    } |> Option.isSome
+
 let nothingMatched (bot: IBot) (upd: Update) =
     maybe {
         let! id = getId upd
@@ -305,7 +337,7 @@ let parseForm (bot: IBot) (upd: Update) =
 
 // НАЧАЛО ПРОГРАММЫ
 [<EntryPoint>]
-let main (args: string array) =
+let main (_: string array) =
     runBot
         [ Filter.isCommand
             [ Filter.command "start"  [ start ]
@@ -313,6 +345,7 @@ let main (args: string array) =
               Filter.command "grades" [ getGrades ]
               Filter.command "auth"   [ auth ]
               Filter.command "create" [ createGroup ]
+              Filter.command "groups" [ getGroups ]
               Filter.command "add"    [ addToGroup ]
               Filter.command "grade"  [ addingGrade ]
             ];
@@ -324,3 +357,4 @@ let main (args: string array) =
         handlePollingErrorAsync
 
     1
+// dotnet run --project FsBot
