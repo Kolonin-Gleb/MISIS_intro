@@ -33,3 +33,4 @@ $RECYCLE.BIN/
 FsBot/token.txt
 fsbot.zip
 /FsBot/bin/Debug
+/FsBot/obj/Debug

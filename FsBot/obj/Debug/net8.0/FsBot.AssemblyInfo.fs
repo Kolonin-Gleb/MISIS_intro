@@ -10,7 +10,7 @@ open System.Reflection
 [<assembly: System.Reflection.AssemblyCompanyAttribute("FsBot")>]
 [<assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")>]
 [<assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")>]
-[<assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+1a079b2fef2fe5b3d9e92d85e7e27c4a9101d7f4")>]
+[<assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+f66ebb956d58a93349112eb22f95ffdc550d3e97")>]
 [<assembly: System.Reflection.AssemblyProductAttribute("FsBot")>]
 [<assembly: System.Reflection.AssemblyTitleAttribute("FsBot")>]
 [<assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")>]
